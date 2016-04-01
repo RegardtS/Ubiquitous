@@ -14,13 +14,15 @@
  * limitations under the License.
  */
 
-package com.example.wear;
+package com.example.android.sunshine.app;
 
 import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
 import android.content.res.Resources;
+import android.graphics.Bitmap;
+import android.graphics.BitmapFactory;
 import android.graphics.Canvas;
 import android.graphics.Color;
 import android.graphics.Paint;
@@ -29,12 +31,16 @@ import android.graphics.Typeface;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Message;
+import android.support.v4.content.LocalBroadcastManager;
 import android.support.wearable.watchface.CanvasWatchFaceService;
 import android.support.wearable.watchface.WatchFaceStyle;
 import android.text.format.Time;
+import android.util.Log;
 import android.view.SurfaceHolder;
 import android.view.WindowInsets;
 
+
+import java.io.FileInputStream;
 import java.lang.ref.WeakReference;
 import java.text.DateFormat;
 import java.text.SimpleDateFormat;
@@ -91,9 +97,16 @@ public class MyWatchFace extends CanvasWatchFaceService {
         Paint mBackgroundPaint;
         Paint mTimePaint;
         Paint mDatePaint;
-
+        String mHighTemp = "";
+        String mLowTemp = "";
+        Bitmap mWeatherBitmap = null;
+        Paint mHighTempPaint;
+        Paint mLowTempPaint;
+        float mXOffset;
+        float mYOffset;
         boolean mAmbient;
         Time mTime;
+
         final BroadcastReceiver mTimeZoneReceiver = new BroadcastReceiver() {
             @Override
             public void onReceive(Context context, Intent intent) {
@@ -101,14 +114,30 @@ public class MyWatchFace extends CanvasWatchFaceService {
                 mTime.setToNow();
             }
         };
-        float mXOffset;
-        float mYOffset;
 
         /**
          * Whether the display supports fewer bits for each color in ambient mode. When true, we
          * disable anti-aliasing in ambient mode.
          */
         boolean mLowBitAmbient;
+
+        private BroadcastReceiver mMessageReceiver = new BroadcastReceiver() {
+            @Override
+            public void onReceive(Context context, Intent intent) {
+                String bitmapFilename = intent.getStringExtra("bitmapFilename");
+                mHighTemp = intent.getStringExtra("highTemp");
+                mLowTemp = intent.getStringExtra("lowTemp");
+                try {
+                    if(bitmapFilename.equals("bitmap.png")) {
+                        FileInputStream is = MyWatchFace.this.openFileInput(bitmapFilename);
+                        mWeatherBitmap = Bitmap.createScaledBitmap(BitmapFactory.decodeStream(is), 100, 100, false);
+                        is.close();
+                    }
+                } catch (Exception e) {
+                    e.printStackTrace();
+                }
+            }
+        };
 
         @Override
         public void onCreate(SurfaceHolder holder) {
@@ -130,6 +159,14 @@ public class MyWatchFace extends CanvasWatchFaceService {
 
             mDatePaint = new Paint();
             mDatePaint = createTextPaint(resources.getColor(R.color.grey));
+
+            mHighTempPaint = new Paint();
+            mHighTempPaint = createTextPaint(resources.getColor(R.color.white));
+
+            mLowTempPaint = new Paint();
+            mLowTempPaint = createTextPaint(resources.getColor(R.color.grey));
+
+
 
             mTime = new Time();
         }
@@ -174,6 +211,10 @@ public class MyWatchFace extends CanvasWatchFaceService {
             mRegisteredTimeZoneReceiver = true;
             IntentFilter filter = new IntentFilter(Intent.ACTION_TIMEZONE_CHANGED);
             MyWatchFace.this.registerReceiver(mTimeZoneReceiver, filter);
+
+            LocalBroadcastManager.getInstance(MyWatchFace.this).registerReceiver(
+                    mMessageReceiver, new IntentFilter("weatherProcessed"));
+
         }
 
         private void unregisterReceiver() {
@@ -182,6 +223,9 @@ public class MyWatchFace extends CanvasWatchFaceService {
             }
             mRegisteredTimeZoneReceiver = false;
             MyWatchFace.this.unregisterReceiver(mTimeZoneReceiver);
+
+            LocalBroadcastManager.getInstance(MyWatchFace.this).unregisterReceiver(
+                    mMessageReceiver);
         }
 
         @Override
@@ -195,7 +239,8 @@ public class MyWatchFace extends CanvasWatchFaceService {
             float textSize = resources.getDimension(isRound ? R.dimen.digital_text_size_round : R.dimen.digital_text_size);
 
             mTimePaint.setTextSize(textSize);
-
+            mLowTempPaint.setTextSize(35);
+            mHighTempPaint.setTextSize(35);
 
             float dateTextSize = resources.getDimensionPixelSize(R.dimen.digital_date_size);
             mDatePaint.setTextSize(dateTextSize);
@@ -264,11 +309,17 @@ public class MyWatchFace extends CanvasWatchFaceService {
 
             canvas.drawText(datetext, bounds.centerX()-(empty.width()/2),mYOffset+empty.height()+16, mDatePaint);
 
-            Paint paint = new Paint();
-            paint.setColor(getResources().getColor(R.color.grey));
-            canvas.drawLine(bounds.centerX()-24, bounds.centerY()+16,bounds.centerX()+24, bounds.centerY()+16, paint);
+            if (mWeatherBitmap!=null) {
+                canvas.drawBitmap(mWeatherBitmap, bounds.centerX()-50,bounds.centerY()-20,mDatePaint);
+            }
 
 
+            mHighTempPaint.getTextBounds(mHighTemp, 0, mHighTemp.length(), empty);
+            mLowTempPaint.getTextBounds(mLowTemp, 0, mLowTemp.length(), empty);
+
+
+            canvas.drawText(mHighTemp, bounds.centerX()-75,bounds.centerY()+100, mHighTempPaint);
+            canvas.drawText(mLowTemp,  bounds.centerX()+75,bounds.centerY()+100, mLowTempPaint);
 
         }
 
